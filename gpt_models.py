@@ -2,6 +2,11 @@ from openai import OpenAI
 import openai
 import config
 
+from langchain_community.document_loaders import WebBaseLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_community.vectorstores import FAISS
+
 GPT_MODEL = "gpt-5.4-nano"
 
 def generate_text(prompt, max_tokens, temperature):
@@ -93,6 +98,53 @@ if __name__ == "__main__":
     # summarized_text = text_summarizer(summarized_text_prompt)
     # print("\nprompt: ", summarized_text_prompt, "\nsummarized_text: ", summarized_text)
 
-poetic_chatbot_prompt = "When was cheese first made?"
-poetic_chatbot_text = poetic_chatbot(poetic_chatbot_prompt)
-print("\nprompt: ", poetic_chatbot_prompt, "\npoetic_chatbot_text: ", poetic_chatbot_text)
+    # poetic_chatbot_prompt = "When was cheese first made?"
+    # poetic_chatbot_text = poetic_chatbot(poetic_chatbot_prompt)
+    # print("\nprompt: ", poetic_chatbot_prompt, "\npoetic_chatbot_text: ", poetic_chatbot_text)
+
+    # poetic_chatbot_prompt = "What is the next course to be uploaded to 365DataScience?"
+    # poetic_chatbot_text = poetic_chatbot(poetic_chatbot_prompt)
+    # print("\nprompt: ", poetic_chatbot_prompt, "\npoetic_chatbot_text: ", poetic_chatbot_text)
+
+    url = "https://365datascience.com/courses/"
+    loader = WebBaseLoader(url)
+    raw_documents = loader.load()
+    text_splitter = RecursiveCharacterTextSplitter()
+    documents = text_splitter.split_documents(raw_documents)
+    embeddings = OpenAIEmbeddings(openai_api_key = config.gpt_api_key)
+    vectorstore = FAISS.from_documents(documents, embeddings)
+    retriever = vectorstore.as_retriever()
+
+    llm = ChatOpenAI(
+        openai_api_key=config.gpt_api_key,
+        model=GPT_MODEL,
+        temperature=0
+    )
+
+    chat_history = []
+    query = "Which course on 365DataScience can help me learn AI?"
+    relevant_docs = retriever.invoke(query)
+    context = "\n\n".join(doc.page_content for doc in relevant_docs)
+    history_text = "\n".join(
+        f"User: {q}\nAssistant: {a}" for q, a in chat_history
+    )
+
+    prompt = f"""
+    Use the context below to answer the question.
+
+    Conversation history:
+    {history_text}
+
+    Context:
+    {context}
+
+    Question:
+    {query}
+    """
+
+    response = llm.invoke(prompt)
+
+    response = llm.invoke(prompt)
+    chat_history.append((query, response.content))
+
+    print(response.content)
